@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>画像三角形変換</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 2em;
+        }
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-size: 0.9em;
+            color: #666;
+            font-weight: 500;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            display: inline-block;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            font-weight: 500;
+        }
+        .file-label:hover {
+            transform: translateY(-2px);
+        }
+        input[type="range"] {
+            width: 200px;
+        }
+        .value-display {
+            text-align: center;
+            font-weight: bold;
+            color: #764ba2;
+        }
+        button {
+            padding: 10px 25px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: transform 0.2s;
+            font-weight: 500;
+        }
+        button:hover {
+            transform: translateY(-2px);
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .canvas-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .canvas-wrapper {
+            position: relative;
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .canvas-wrapper h3 {
+            margin: 0 0 10px 0;
+            color: #555;
+            text-align: center;
+        }
+        canvas {
+            display: block;
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            border-radius: 10px;
+            text-align: center;
+            color: #333;
+        }
+        @media (max-width: 768px) {
+            .canvas-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 画像三角形変換フィルター</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label for="imageInput" class="file-label">
+                    📷 画像を選択
+                </label>
+                <input type="file" id="imageInput" accept="image/*">
+            </div>
+            
+            <div class="control-group">
+                <label>三角形の数</label>
+                <input type="range" id="pointCount" min="10" max="3000" value="100">
+                <div class="value-display" id="pointValue">100</div>
+            </div>
+            
+            <div class="control-group">
+                <label>エッジ検出感度</label>
+                <input type="range" id="edgeSensitivity" min="0" max="100" value="50">
+                <div class="value-display" id="edgeValue">50</div>
+            </div>
+            
+            <button id="processBtn">変換実行</button>
+            <button id="downloadSvgBtn" style="display: none;">SVGダウンロード</button>
+        </div>
+        
+        <div class="canvas-container">
+            <div class="canvas-wrapper">
+                <h3>元画像</h3>
+                <canvas id="originalCanvas"></canvas>
+            </div>
+            <div class="canvas-wrapper">
+                <h3>三角形変換後</h3>
+                <canvas id="resultCanvas"></canvas>
+            </div>
+        </div>
+        
+        <div class="info" id="info">
+            画像を選択して「変換実行」をクリックしてください
+        </div>
+        
+        <div class="algorithm-explanation" style="margin-top: 40px; padding: 30px; background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%); border-radius: 15px;">
+            <h2 style="color: #5e35b1; margin-bottom: 20px;">📐 アルゴリズムの仕組み</h2>
+            
+            <div style="margin-bottom: 25px;">
+                <h3 style="color: #7e57c2; margin-bottom: 10px;">1. 頂点の配置</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    まず、三角形の頂点となる点を画像上に配置します。この配置方法は3つの戦略を組み合わせています：
+                </p>
+                <ul style="line-height: 1.8; color: #616161;">
+                    <li><strong>固定頂点：</strong>画像の四隅に必ず頂点を配置（画像全体をカバーするため）</li>
+                    <li><strong>エッジベース頂点：</strong>Sobelフィルタでエッジ（輪郭）を検出し、輪郭の強い部分に優先的に頂点を配置</li>
+                    <li><strong>ランダム頂点：</strong>残りの頂点をランダムに配置して全体のバランスを取る</li>
+                </ul>
+                <p style="line-height: 1.6; color: #424242; margin-top: 10px;">
+                    「エッジ検出感度」パラメータは、エッジベース頂点とランダム頂点の比率を制御します。高い値にすると、輪郭部分により多くの頂点が集中し、細部が保持されます。
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 25px;">
+                <h3 style="color: #7e57c2; margin-bottom: 10px;">2. Delaunay三角分割</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    配置された頂点から三角形メッシュを生成します。Delaunay三角分割は、以下の特性を持つ最適な三角形分割手法です：
+                </p>
+                <ul style="line-height: 1.8; color: #616161;">
+                    <li><strong>外接円条件：</strong>各三角形の外接円内に他の頂点が含まれない</li>
+                    <li><strong>角度の最大化：</strong>細長い三角形を避け、できるだけ正三角形に近い形状を生成</li>
+                    <li><strong>一意性：</strong>与えられた点集合に対して、唯一の三角分割を生成</li>
+                </ul>
+                <p style="line-height: 1.6; color: #424242; margin-top: 10px;">
+                    実装では、Bowyer-Watsonアルゴリズムを使用しています。新しい頂点を追加するたびに、その点を含む外接円を持つ「不正な」三角形を削除し、新しい三角形を生成します。
+                </p>
+            </div>
+            
+            <div style="margin-bottom: 25px;">
+                <h3 style="color: #7e57c2; margin-bottom: 10px;">3. 色の近似</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    各三角形を単一の色で塗りつぶします。この色は以下の手順で決定されます：
+                </p>
+                <ol style="line-height: 1.8; color: #616161;">
+                    <li>三角形の境界ボックス（最小・最大座標）を計算</li>
+                    <li>三角形内部のピクセルをサンプリング（計算効率のため2ピクセルごと）</li>
+                    <li>サンプリングしたピクセルのRGB値の平均を計算</li>
+                    <li>三角形が小さすぎる場合は、重心位置の色を使用</li>
+                </ol>
+            </div>
+            
+            <div style="margin-bottom: 25px;">
+                <h3 style="color: #7e57c2; margin-bottom: 10px;">4. エッジ検出（Sobelフィルタ）</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    画像の輪郭を検出するため、簡易版のSobelフィルタを実装しています：
+                </p>
+                <ul style="line-height: 1.8; color: #616161;">
+                    <li>各ピクセルをグレースケールに変換（輝度 = 0.299R + 0.587G + 0.114B）</li>
+                    <li>水平方向の勾配（Gx）= 右側の輝度 - 左側の輝度</li>
+                    <li>垂直方向の勾配（Gy）= 下側の輝度 - 上側の輝度</li>
+                    <li>エッジの強度 = √(Gx² + Gy²)</li>
+                </ul>
+            </div>
+            
+            <div style="padding: 20px; background: rgba(255, 255, 255, 0.5); border-radius: 10px;">
+                <h3 style="color: #7e57c2; margin-bottom: 10px;">💡 応用と効果</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    このアルゴリズムは「Low-Poly（ローポリ）」アート効果を生成し、以下のような用途があります：
+                </p>
+                <ul style="line-height: 1.8; color: #616161;">
+                    <li><strong>アート効果：</strong>写真をスタイライズされた幾何学的なアートに変換</li>
+                    <li><strong>画像圧縮：</strong>少ない三角形で画像を近似表現（ベクター化）</li>
+                    <li><strong>メッシュ生成：</strong>3Dモデリングやゲーム開発での基礎メッシュ作成</li>
+                    <li><strong>画像解析：</strong>重要な特徴を保持しながら情報を簡略化</li>
+                </ul>
+                <p style="line-height: 1.6; color: #424242; margin-top: 10px;">
+                    パラメータを調整することで、抽象的なアート風から、より写実的な表現まで、幅広い効果を得られます。特に人物写真、風景、イラストなどで興味深い結果が得られます。
+                </p>
+            </div>
+            
+            <div style="margin-top: 20px; padding: 20px; background: rgba(103, 58, 183, 0.1); border-radius: 10px; border: 2px solid #673ab7;">
+                <h3 style="color: #673ab7; margin-bottom: 10px;">📥 SVG出力機能</h3>
+                <p style="line-height: 1.6; color: #424242;">
+                    変換後の画像は<strong>SVG（Scalable Vector Graphics）形式</strong>でダウンロード可能です。
+                    SVGの特徴：
+                </p>
+                <ul style="line-height: 1.8; color: #616161;">
+                    <li><strong>ベクター形式：</strong>どんなに拡大しても画質が劣化しない</li>
+                    <li><strong>編集可能：</strong>Adobe IllustratorやInkscapeで後から編集できる</li>
+                    <li><strong>軽量：</strong>三角形の数が少ない場合、ファイルサイズが小さい</li>
+                    <li><strong>Web親和性：</strong>HTMLに直接埋め込み可能、CSSでスタイリング可能</li>
+                </ul>
+                <p style="line-height: 1.6; color: #424242; margin-top: 10px;">
+                    変換実行後に表示される「SVGダウンロード」ボタンから保存できます。
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Delaunay三角分割の実装
+        class Delaunay {
+            constructor(points) {
+                this.points = points;
+                this.triangles = [];
+                this.superTriangle = null;
+                this.compute();
+            }
+            
+            compute() {
+                if (this.points.length < 3) {
+                    console.log('  警告: 頂点数が3未満のため三角分割をスキップ');
+                    return;
+                }
+                
+                console.log(`  ${this.points.length}個の頂点でDelaunay三角分割を開始`);
+                
+                // スーパートライアングルを作成
+                const minX = Math.min(...this.points.map(p => p[0]));
+                const minY = Math.min(...this.points.map(p => p[1]));
+                const maxX = Math.max(...this.points.map(p => p[0]));
+                const maxY = Math.max(...this.points.map(p => p[1]));
+                
+                const dx = maxX - minX;
+                const dy = maxY - minY;
+                const deltaMax = Math.max(dx, dy);
+                const midX = (minX + maxX) / 2;
+                const midY = (minY + maxY) / 2;
+                
+                const p1 = [midX - 20 * deltaMax, midY - deltaMax];
+                const p2 = [midX, midY + 20 * deltaMax];
+                const p3 = [midX + 20 * deltaMax, midY - deltaMax];
+                
+                // スーパートライアングルの頂点を保存
+                this.superTriangle = [p1, p2, p3];
+                this.triangles = [[p1, p2, p3]];
+                console.log('  スーパートライアングル作成完了');
+                
+                // 各点を追加
+                let processedPoints = 0;
+                for (const point of this.points) {
+                    this.addPoint(point);
+                    processedPoints++;
+                    if (processedPoints % 50 === 0) {
+                        console.log(`  三角分割進捗: ${processedPoints}/${this.points.length} 頂点処理済`);
+                    }
+                }
+                
+                // スーパートライアングルに接続された三角形を削除
+                const beforeCount = this.triangles.length;
+                this.triangles = this.triangles.filter(tri => {
+                    // 三角形の頂点がスーパートライアングルの頂点を含むかチェック
+                    for (let vertex of tri) {
+                        for (let superVertex of this.superTriangle) {
+                            if (Math.abs(vertex[0] - superVertex[0]) < 0.01 && 
+                                Math.abs(vertex[1] - superVertex[1]) < 0.01) {
+                                return false;
+                            }
+                        }
+                    }
+                    return true;
+                });
+                console.log(`  スーパートライアングル関連の三角形を削除: ${beforeCount} → ${this.triangles.length}`);
+                
+                if (this.triangles.length === 0) {
+                    console.log('  警告: すべての三角形が削除されました。デバッグ情報:');
+                    console.log('    - 入力頂点数:', this.points.length);
+                    console.log('    - 削除前の三角形数:', beforeCount);
+                }
+            }
+            
+            addPoint(point) {
+                const edges = [];
+                const badTriangles = [];
+                
+                // 外接円内に点を含む三角形を探す
+                for (const tri of this.triangles) {
+                    if (this.inCircumcircle(point, tri)) {
+                        badTriangles.push(tri);
+                        edges.push([tri[0], tri[1]]);
+                        edges.push([tri[1], tri[2]]);
+                        edges.push([tri[2], tri[0]]);
+                    }
+                }
+                
+                if (badTriangles.length === 0) {
+                    console.log(`  警告: 点 [${point[0].toFixed(1)}, ${point[1].toFixed(1)}] に対して不正な三角形が見つかりません`);
+                    return;
+                }
+                
+                // 不正な三角形を削除
+                this.triangles = this.triangles.filter(tri => !badTriangles.includes(tri));
+                
+                // 重複するエッジを除去（境界エッジのみ残す）
+                const polygon = [];
+                for (let i = 0; i < edges.length; i++) {
+                    if (edges[i] === null) continue;
+                    
+                    let isShared = false;
+                    for (let j = i + 1; j < edges.length; j++) {
+                        if (edges[j] !== null && this.edgesEqual(edges[i], edges[j])) {
+                            edges[j] = null;  // 重複するエッジをマーク
+                            isShared = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!isShared) {
+                        polygon.push(edges[i]);
+                    }
+                }
+                
+                // 新しい三角形を作成
+                for (const edge of polygon) {
+                    const newTri = [edge[0], edge[1], point];
+                    this.triangles.push(newTri);
+                }
+                
+                // デバッグ情報
+                if (this.triangles.length === 0) {
+                    console.log(`  エラー: 点追加後に三角形が0個になりました`);
+                    console.log(`    - 削除された三角形: ${badTriangles.length}個`);
+                    console.log(`    - ポリゴンエッジ: ${polygon.length}個`);
+                }
+            }
+            
+            inCircumcircle(point, tri) {
+                const [p1, p2, p3] = tri;
+                
+                // 三角形が時計回りか反時計回りかチェック
+                const d = 2 * (p1[0] * (p2[1] - p3[1]) + p2[0] * (p3[1] - p1[1]) + p3[0] * (p1[1] - p2[1]));
+                
+                if (Math.abs(d) < 1e-10) {
+                    // 三点が一直線上にある
+                    return false;
+                }
+                
+                // 外接円の中心を計算
+                const ux = ((p1[0] * p1[0] + p1[1] * p1[1]) * (p2[1] - p3[1]) +
+                           (p2[0] * p2[0] + p2[1] * p2[1]) * (p3[1] - p1[1]) +
+                           (p3[0] * p3[0] + p3[1] * p3[1]) * (p1[1] - p2[1])) / d;
+                
+                const uy = ((p1[0] * p1[0] + p1[1] * p1[1]) * (p3[0] - p2[0]) +
+                           (p2[0] * p2[0] + p2[1] * p2[1]) * (p1[0] - p3[0]) +
+                           (p3[0] * p3[0] + p3[1] * p3[1]) * (p2[0] - p1[0])) / d;
+                
+                // 外接円の半径の二乗
+                const r2 = (p1[0] - ux) * (p1[0] - ux) + (p1[1] - uy) * (p1[1] - uy);
+                
+                // 点から外接円の中心までの距離の二乗
+                const dist2 = (point[0] - ux) * (point[0] - ux) + (point[1] - uy) * (point[1] - uy);
+                
+                // 点が外接円内にあるかチェック
+                return dist2 < r2 - 1e-10;
+            }
+            
+            edgesEqual(e1, e2) {
+                return (e1[0] === e2[0] && e1[1] === e2[1]) ||
+                       (e1[0] === e2[1] && e1[1] === e2[0]);
+            }
+        }
+        
+        // メイン処理
+        let originalImage = null;
+        let currentTriangles = null;  // 三角形データを保存
+        let currentImageData = null;  // 画像データを保存
+        let currentWidth = 0;
+        let currentHeight = 0;
+        
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        originalImage = img;
+                        displayOriginal();
+                        document.getElementById('info').textContent = '画像が読み込まれました。変換実行をクリックしてください。';
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        document.getElementById('pointCount').addEventListener('input', function(e) {
+            document.getElementById('pointValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('edgeSensitivity').addEventListener('input', function(e) {
+            document.getElementById('edgeValue').textContent = e.target.value;
+        });
+        
+        document.getElementById('processBtn').addEventListener('click', processImage);
+        document.getElementById('downloadSvgBtn').addEventListener('click', downloadSVG);
+        
+        function generateSVG(triangles, imageData, width, height) {
+            let svg = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+            svg += `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">\n`;
+            svg += `  <rect width="${width}" height="${height}" fill="#f0f0f0"/>\n`;
+            
+            for (const triangle of triangles) {
+                const color = getAverageColor(imageData, triangle, width, height);
+                const points = `${triangle[0][0].toFixed(2)},${triangle[0][1].toFixed(2)} ${triangle[1][0].toFixed(2)},${triangle[1][1].toFixed(2)} ${triangle[2][0].toFixed(2)},${triangle[2][1].toFixed(2)}`;
+                svg += `  <polygon points="${points}" fill="rgb(${color.r},${color.g},${color.b})" stroke="rgba(${color.r},${color.g},${color.b},0.5)" stroke-width="0.5"/>\n`;
+            }
+            
+            svg += '</svg>';
+            return svg;
+        }
+        
+        function downloadSVG() {
+            if (!currentTriangles || currentTriangles.length === 0) {
+                alert('先に画像を変換してください');
+                return;
+            }
+            
+            console.log('SVG生成開始...');
+            const svgContent = generateSVG(currentTriangles, currentImageData, currentWidth, currentHeight);
+            console.log(`SVGサイズ: ${(svgContent.length / 1024).toFixed(2)}KB`);
+            
+            // Blobを作成してダウンロード
+            const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `triangulated_${Date.now()}.svg`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            console.log('SVGダウンロード完了');
+        }
+        
+        function displayOriginal() {
+            const canvas = document.getElementById('originalCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            const maxSize = 500;
+            let width = originalImage.width;
+            let height = originalImage.height;
+            
+            if (width > maxSize || height > maxSize) {
+                const scale = Math.min(maxSize / width, maxSize / height);
+                width *= scale;
+                height *= scale;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            ctx.drawImage(originalImage, 0, 0, width, height);
+        }
+        
+        function processImage() {
+            if (!originalImage) {
+                alert('画像を選択してください');
+                return;
+            }
+            
+            console.log('=== 画像三角形変換処理開始 ===');
+            const startTime = performance.now();
+            
+            const pointCount = parseInt(document.getElementById('pointCount').value);
+            const edgeSensitivity = parseInt(document.getElementById('edgeSensitivity').value) / 100;
+            
+            console.log(`設定パラメータ:`, {
+                pointCount: pointCount,
+                edgeSensitivity: edgeSensitivity * 100 + '%',
+                originalImageSize: `${originalImage.width}x${originalImage.height}`
+            });
+            
+            document.getElementById('info').textContent = '処理中...';
+            document.getElementById('processBtn').disabled = true;
+            
+            setTimeout(() => {
+                const canvas = document.getElementById('resultCanvas');
+                const ctx = canvas.getContext('2d');
+                
+                const maxSize = 500;
+                let width = originalImage.width;
+                let height = originalImage.height;
+                
+                if (width > maxSize || height > maxSize) {
+                    const scale = Math.min(maxSize / width, maxSize / height);
+                    width *= scale;
+                    height *= scale;
+                }
+                
+                console.log(`処理画像サイズ: ${width}x${height}`);
+                
+                canvas.width = width;
+                canvas.height = height;
+                
+                // 一時的なキャンバスで元画像を描画
+                console.log('ステップ1: 画像データの準備...');
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                tempCtx.drawImage(originalImage, 0, 0, width, height);
+                const imageData = tempCtx.getImageData(0, 0, width, height);
+                console.log(`✓ 画像データ取得完了 (${imageData.data.length / 4}ピクセル)`);
+                
+                // エッジ検出と点の生成
+                console.log('ステップ2: エッジ検出と頂点生成...');
+                const pointGenStart = performance.now();
+                const points = generatePoints(imageData, pointCount, edgeSensitivity);
+                const pointGenTime = performance.now() - pointGenStart;
+                console.log(`✓ ${points.length}個の頂点を生成 (${pointGenTime.toFixed(2)}ms)`);
+                console.log(`  - エッジベース: ${Math.floor(pointCount * edgeSensitivity)}個`);
+                console.log(`  - ランダム配置: ${pointCount - Math.floor(pointCount * edgeSensitivity) - 4}個`);
+                console.log(`  - 四隅固定: 4個`);
+                
+                // Delaunay三角分割
+                console.log('ステップ3: Delaunay三角分割...');
+                const delaunayStart = performance.now();
+                const delaunay = new Delaunay(points);
+                const delaunayTime = performance.now() - delaunayStart;
+                console.log(`✓ ${delaunay.triangles.length}個の三角形を生成 (${delaunayTime.toFixed(2)}ms)`);
+                
+                // グローバル変数に保存（SVG出力用）
+                currentTriangles = delaunay.triangles;
+                currentImageData = imageData;
+                currentWidth = width;
+                currentHeight = height;
+                
+                // SVGダウンロードボタンを表示
+                document.getElementById('downloadSvgBtn').style.display = 'inline-block';
+                // 三角形を描画
+                console.log('ステップ4: 三角形の描画...');
+                const renderStart = performance.now();
+                ctx.fillStyle = '#f0f0f0';
+                ctx.fillRect(0, 0, width, height);
+                
+                let processedTriangles = 0;
+                for (const triangle of delaunay.triangles) {
+                    // 三角形の重心を計算
+                    const centerX = (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3;
+                    const centerY = (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3;
+                    
+                    // 重心の色を取得
+                    const color = getAverageColor(imageData, triangle, width, height);
+                    
+                    // 三角形を塗りつぶし
+                    ctx.fillStyle = `rgb(${color.r}, ${color.g}, ${color.b})`;
+                    ctx.beginPath();
+                    ctx.moveTo(triangle[0][0], triangle[0][1]);
+                    ctx.lineTo(triangle[1][0], triangle[1][1]);
+                    ctx.lineTo(triangle[2][0], triangle[2][1]);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 三角形の輪郭線（オプション）
+                    ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.5)`;
+                    ctx.lineWidth = 0.5;
+                    ctx.stroke();
+                    
+                    processedTriangles++;
+                    if (processedTriangles % 50 === 0) {
+                        console.log(`  描画進捗: ${processedTriangles}/${delaunay.triangles.length} 三角形`);
+                    }
+                }
+                
+                const renderTime = performance.now() - renderStart;
+                console.log(`✓ 全三角形の描画完了 (${renderTime.toFixed(2)}ms)`);
+                
+                const totalTime = performance.now() - startTime;
+                console.log(`=== 処理完了 ===`);
+                console.log(`総処理時間: ${totalTime.toFixed(2)}ms`);
+                console.log(`処理内訳:`, {
+                    '頂点生成': `${pointGenTime.toFixed(2)}ms (${(pointGenTime/totalTime*100).toFixed(1)}%)`,
+                    '三角分割': `${delaunayTime.toFixed(2)}ms (${(delaunayTime/totalTime*100).toFixed(1)}%)`,
+                    '描画処理': `${renderTime.toFixed(2)}ms (${(renderTime/totalTime*100).toFixed(1)}%)`
+                });
+                
+                document.getElementById('info').textContent = `${delaunay.triangles.length}個の三角形で変換完了！`;
+                document.getElementById('processBtn').disabled = false;
+            }, 10);
+        }
+        
+        function generatePoints(imageData, count, edgeSensitivity) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const points = [];
+            
+            // 四隅を追加
+            points.push([0, 0]);
+            points.push([width - 1, 0]);
+            points.push([0, height - 1]);
+            points.push([width - 1, height - 1]);
+            
+            // エッジ検出（簡易版Sobel）
+            console.log('  エッジ検出実行中...');
+            const edgeDetectStart = performance.now();
+            const edges = detectEdges(imageData);
+            console.log(`  エッジ検出完了 (${(performance.now() - edgeDetectStart).toFixed(2)}ms)`);
+            
+            // エッジの強度に基づいて点を配置
+            const edgePoints = Math.floor(count * edgeSensitivity);
+            const randomPoints = count - edgePoints - 4;
+            
+            // エッジ上に点を配置
+            console.log('  エッジピクセルを収集中...');
+            const edgePixels = [];
+            for (let y = 1; y < height - 1; y += 2) {
+                for (let x = 1; x < width - 1; x += 2) {
+                    const idx = y * width + x;
+                    if (edges[idx] > 30) {
+                        edgePixels.push([x, y, edges[idx]]);
+                    }
+                }
+            }
+            console.log(`  ${edgePixels.length}個のエッジピクセルを検出`);
+            
+            // エッジの強度でソート
+            edgePixels.sort((a, b) => b[2] - a[2]);
+            
+            // 上位のエッジピクセルを選択
+            for (let i = 0; i < Math.min(edgePoints, edgePixels.length); i++) {
+                points.push([edgePixels[i][0], edgePixels[i][1]]);
+            }
+            console.log(`  ${Math.min(edgePoints, edgePixels.length)}個のエッジベース頂点を追加`);
+            
+            // ランダムな点を追加
+            for (let i = 0; i < randomPoints; i++) {
+                points.push([
+                    Math.random() * width,
+                    Math.random() * height
+                ]);
+            }
+            console.log(`  ${randomPoints}個のランダム頂点を追加`);
+            
+            return points;
+        }
+        
+        function detectEdges(imageData) {
+            const width = imageData.width;
+            const height = imageData.height;
+            const data = imageData.data;
+            const edges = new Float32Array(width * height);
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    const idx = (y * width + x) * 4;
+                    
+                    // グレースケール値を計算
+                    const gray = data[idx] * 0.299 + data[idx + 1] * 0.587 + data[idx + 2] * 0.114;
+                    
+                    // Sobelフィルタ（簡易版）
+                    const idx_top = ((y - 1) * width + x) * 4;
+                    const idx_bottom = ((y + 1) * width + x) * 4;
+                    const idx_left = (y * width + (x - 1)) * 4;
+                    const idx_right = (y * width + (x + 1)) * 4;
+                    
+                    const gray_top = data[idx_top] * 0.299 + data[idx_top + 1] * 0.587 + data[idx_top + 2] * 0.114;
+                    const gray_bottom = data[idx_bottom] * 0.299 + data[idx_bottom + 1] * 0.587 + data[idx_bottom + 2] * 0.114;
+                    const gray_left = data[idx_left] * 0.299 + data[idx_left + 1] * 0.587 + data[idx_left + 2] * 0.114;
+                    const gray_right = data[idx_right] * 0.299 + data[idx_right + 1] * 0.587 + data[idx_right + 2] * 0.114;
+                    
+                    const gx = gray_right - gray_left;
+                    const gy = gray_bottom - gray_top;
+                    
+                    edges[y * width + x] = Math.sqrt(gx * gx + gy * gy);
+                }
+            }
+            
+            return edges;
+        }
+        
+        function getAverageColor(imageData, triangle, width, height) {
+            const data = imageData.data;
+            let r = 0, g = 0, b = 0, count = 0;
+            
+            // 三角形の境界ボックスを計算
+            const minX = Math.max(0, Math.floor(Math.min(triangle[0][0], triangle[1][0], triangle[2][0])));
+            const maxX = Math.min(width - 1, Math.ceil(Math.max(triangle[0][0], triangle[1][0], triangle[2][0])));
+            const minY = Math.max(0, Math.floor(Math.min(triangle[0][1], triangle[1][1], triangle[2][1])));
+            const maxY = Math.min(height - 1, Math.ceil(Math.max(triangle[0][1], triangle[1][1], triangle[2][1])));
+            
+            // 三角形内のピクセルをサンプリング
+            for (let y = minY; y <= maxY; y += 2) {
+                for (let x = minX; x <= maxX; x += 2) {
+                    if (pointInTriangle([x, y], triangle)) {
+                        const idx = (y * width + x) * 4;
+                        r += data[idx];
+                        g += data[idx + 1];
+                        b += data[idx + 2];
+                        count++;
+                    }
+                }
+            }
+            
+            if (count === 0) {
+                // 三角形が小さすぎる場合は重心の色を使用
+                const centerX = Math.floor((triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3);
+                const centerY = Math.floor((triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3);
+                const idx = (centerY * width + centerX) * 4;
+                return {
+                    r: data[idx],
+                    g: data[idx + 1],
+                    b: data[idx + 2]
+                };
+            }
+            
+            return {
+                r: Math.round(r / count),
+                g: Math.round(g / count),
+                b: Math.round(b / count)
+            };
+        }
+        
+        function pointInTriangle(p, triangle) {
+            const [p0, p1, p2] = triangle;
+            const area = 0.5 * (-p1[1] * p2[0] + p0[1] * (-p1[0] + p2[0]) + p0[0] * (p1[1] - p2[1]) + p1[0] * p2[1]);
+            const s = 1 / (2 * area) * (p0[1] * p2[0] - p0[0] * p2[1] + (p2[1] - p0[1]) * p[0] + (p0[0] - p2[0]) * p[1]);
+            const t = 1 / (2 * area) * (p0[0] * p1[1] - p0[1] * p1[0] + (p0[1] - p1[1]) * p[0] + (p1[0] - p0[0]) * p[1]);
+            
+            return s >= 0 && t >= 0 && (1 - s - t) >= 0;
+        }
+        
+        // デモ用のサンプル画像を自動生成
+        window.addEventListener('load', function() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 400;
+            canvas.height = 400;
+            const ctx = canvas.getContext('2d');
+            
+            // グラデーション背景
+            const gradient = ctx.createRadialGradient(200, 200, 0, 200, 200, 200);
+            gradient.addColorStop(0, '#ff6b6b');
+            gradient.addColorStop(0.5, '#4ecdc4');
+            gradient.addColorStop(1, '#45b7d1');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 400, 400);
+            
+            // いくつかの図形を追加
+            ctx.fillStyle = '#f7b731';
+            ctx.beginPath();
+            ctx.arc(150, 150, 60, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = '#5f27cd';
+            ctx.fillRect(250, 250, 100, 100);
+            
+            ctx.fillStyle = '#00d2d3';
+            ctx.beginPath();
+            ctx.moveTo(300, 100);
+            ctx.lineTo(350, 180);
+            ctx.lineTo(250, 180);
+            ctx.closePath();
+            ctx.fill();
+            
+            // 画像として読み込み
+            canvas.toBlob(function(blob) {
+                const img = new Image();
+                img.onload = function() {
+                    originalImage = img;
+                    displayOriginal();
+                    document.getElementById('info').textContent = 'サンプル画像を読み込みました。変換実行をクリックするか、新しい画像を選択してください。';
+                };
+                img.src = URL.createObjectURL(blob);
+            });
+        });
+    </script>
+</body>
+</html>
