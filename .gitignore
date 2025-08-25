@@ -1,0 +1,39 @@
+# IDE/Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+.classpath
+*.sublime-*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+.cache/
+
+# Node.js (if added later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Python (if added later)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# Build outputs (if added later)
+dist/
+build/
+out/
